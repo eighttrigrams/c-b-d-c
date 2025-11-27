@@ -1,0 +1,6 @@
+.lsp
+.clj-kondo
+.cpcache
+samples/*
+!samples/.gitkeep
+.DS_Store
