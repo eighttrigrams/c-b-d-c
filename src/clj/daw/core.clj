@@ -7,7 +7,8 @@
 (defonce state (atom {:master 127
                        :mixer [127 127 50 110]
                        :bpm 120
-                       :playing true}))
+                       :playing true
+                       :step 0}))
 
 (defn frames-per-16th []
   (int (/ (* sample-rate 60) (:bpm @state) 4)))
@@ -134,6 +135,7 @@
         (if (:playing @state)
           (let [buffer (int-array samples-per-16th)
                 idx (mod step 16)
+                _ (swap! state assoc :step idx)
                 new-voices (doall
                             (for [[ch {:keys [sample steps]}] (map-indexed vector pattern)
                                   :let [velocity (nth steps idx)

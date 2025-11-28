@@ -5,14 +5,65 @@
 (defonce state (r/atom {:master 127
                         :mixer [127 127 50 110]
                         :bpm 120
-                        :playing true}))
+                        :playing true
+                        :step 0}))
+
+(defonce playhead (r/atom {:step 0 :last-sync 0 :sync-step 0}))
 
 (def channel-names ["Kick" "Snare" "HiHat" "Reso"])
+
+(def pattern
+  [{:sample :kick  :steps [127 0 0 0 127 0 0 0 127 0 0 0 127 0 0 0]}
+   {:sample :snare :steps [0 0 0 0 127 0 0 0 0 0 0 0 127 0 0 0]}
+   {:sample :hh    :steps [127 0 80 0 127 0 80 0 127 0 80 0 127 0 80 0]}
+   {:sample :reso  :steps [127 0 20 0 127 0 0 0 0 0 0 0 0 0 0 0]}])
 
 (defn fetch-state []
   (-> (js/fetch "/api/state")
       (.then #(.json %))
       (.then #(reset! state (js->clj % :keywordize-keys true)))))
+
+(defn sync-playhead []
+  (-> (js/fetch "/api/state")
+      (.then #(.json %))
+      (.then (fn [result]
+               (let [data (js->clj result :keywordize-keys true)]
+                 (reset! state data)
+                 (reset! playhead {:step (:step data)
+                                   :last-sync (.now js/Date)
+                                   :sync-step (:step data)}))))))
+
+(defn calc-current-step []
+  (if (:playing @state)
+    (let [bpm (:bpm @state)
+          ms-per-step (/ 60000 bpm 4)
+          elapsed (- (.now js/Date) (:last-sync @playhead))
+          steps-elapsed (js/Math.floor (/ elapsed ms-per-step))]
+      (mod (+ (:sync-step @playhead) steps-elapsed) 16))
+    0))
+
+(defonce animation-frame (atom nil))
+(defonce sync-interval (atom nil))
+
+(defn start-playhead-loop []
+  (letfn [(tick []
+            (swap! playhead assoc :step (calc-current-step))
+            (reset! animation-frame (js/requestAnimationFrame tick)))]
+    (tick)))
+
+(defn stop-playhead-loop []
+  (when @animation-frame
+    (js/cancelAnimationFrame @animation-frame)
+    (reset! animation-frame nil)))
+
+(defn start-sync []
+  (sync-playhead)
+  (reset! sync-interval (js/setInterval sync-playhead 2000)))
+
+(defn stop-sync []
+  (when @sync-interval
+    (js/clearInterval @sync-interval)
+    (reset! sync-interval nil)))
 
 (defn set-master [value]
   (-> (js/fetch "/api/master"
@@ -40,7 +91,11 @@
                 #js {:method "PUT"
                      :headers #js {"Content-Type" "application/json"}
                      :body (js/JSON.stringify #js {:value value})})
-      (.then #(swap! state assoc :playing value))))
+      (.then (fn []
+               (swap! state assoc :playing value)
+               (if value
+                 (do (start-sync) (start-playhead-loop))
+                 (do (stop-sync) (stop-playhead-loop) (swap! playhead assoc :step 0)))))))
 
 (defn slider [{:keys [label value on-change]}]
   [:div.channel
@@ -61,6 +116,22 @@
       (.then (fn [result]
                (reset! export-status (str "Exported: " (.-exported result)))
                (js/setTimeout #(reset! export-status nil) 3000)))))
+
+(defn drum-grid []
+  (let [current-step (:step @playhead)]
+    [:div.grid-container
+     [:div.grid
+      (doall
+       (for [[row-idx {:keys [steps]}] (map-indexed vector pattern)]
+         ^{:key row-idx}
+         [:div.grid-row
+          [:span.row-label (nth channel-names row-idx)]
+          (doall
+           (for [[col-idx vel] (map-indexed vector steps)]
+             ^{:key col-idx}
+             [:div.grid-cell {:class (when (pos? vel) "active")
+                              :style {:opacity (if (pos? vel) (/ vel 127) 0.15)}}]))]))]
+     [:div.playhead {:style {:left (str (+ 60 (* current-step 24)) "px")}}]]))
 
 (defn transport []
   [:div.transport
@@ -93,8 +164,11 @@
   [:div
    [:h1 "AI DAW"]
    [transport]
+   [drum-grid]
    [mixer-ui]])
 
 (defn init []
   (fetch-state)
+  (start-sync)
+  (start-playhead-loop)
   (rdom/render [app] (.getElementById js/document "app")))

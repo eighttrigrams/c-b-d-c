@@ -1,6 +1,6 @@
 # AI DAW
 
-![AI DAW UI](./ai-dai-ui.png)
+![AI DAW UI](./ai-daw-ui.png)
 
 ## Setup
 
