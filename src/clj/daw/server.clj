@@ -3,9 +3,13 @@
             [ring.middleware.json :refer [wrap-json-body wrap-json-response]]
             [ring.middleware.resource :refer [wrap-resource]]
             [ring.util.response :refer [response content-type]]
-            [compojure.core :refer [defroutes GET PUT]]
+            [compojure.core :refer [defroutes GET POST PUT]]
             [compojure.route :as route]
-            [daw.core :as core]))
+            [daw.core :as core])
+  (:import [java.io File]
+           [javax.sound.sampled AudioSystem AudioFileFormat$Type]
+           [java.time LocalDateTime]
+           [java.time.format DateTimeFormatter]))
 
 (defroutes app-routes
   (GET "/" []
@@ -25,6 +29,24 @@
   (PUT "/api/playing" {body :body}
     (swap! core/state assoc :playing (:value body))
     (response @core/state))
+  (GET "/api/export" []
+    (let [export-dir (File. ".exports")
+          _ (when-not (.exists export-dir) (.mkdirs export-dir))
+          timestamp (.format (LocalDateTime/now) (DateTimeFormatter/ofPattern "yyyy-MM-dd_HH-mm-ss"))
+          filename (str "export-" timestamp ".wav")
+          file (File. export-dir filename)
+          samples {:kick  (core/sample->stereo-ints (core/load-sample "samples/BD Kick 006 HC.wav"))
+                   :snare (core/sample->stereo-ints (core/load-sample "samples/SN Sd 4Bit Vinyl St GB.wav"))
+                   :hh    (core/sample->stereo-ints (core/load-sample "samples/HH 60S Stomp2 GB.wav"))
+                   :reso  (core/sample->stereo-ints (core/load-sample "samples/reso.wav"))}
+          n-steps (* 8 16)
+          audio-bytes (core/render-steps samples n-steps)
+          stream (javax.sound.sampled.AudioInputStream.
+                  (java.io.ByteArrayInputStream. audio-bytes)
+                  core/output-format
+                  (/ (alength audio-bytes) 4))]
+      (AudioSystem/write stream AudioFileFormat$Type/WAVE file)
+      (response {:exported (.getPath file)})))
   (route/not-found "Not Found"))
 
 (def app

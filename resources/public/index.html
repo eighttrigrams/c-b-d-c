@@ -46,6 +46,26 @@
     }
     .tempo-btn:hover { background: #444; }
 
+    .export-btn {
+      padding: 12px 24px;
+      border: none;
+      background: #16c79a;
+      color: #111;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: transform 0.1s, background 0.1s;
+    }
+    .export-btn:hover { background: #1dd1a1; transform: scale(1.05); }
+    .export-btn:active { transform: scale(0.95); }
+
+    .export-status {
+      color: #16c79a;
+      font-size: 14px;
+      font-family: monospace;
+    }
+
     .mixer { display: flex; flex-direction: column; gap: 20px; max-width: 400px; }
     .channel { display: flex; align-items: center; gap: 15px; }
     .channel label { width: 80px; }

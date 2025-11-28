@@ -52,11 +52,25 @@
             :on-change #(on-change (.. % -target -value))}]
    [:span.value value]])
 
+(defonce export-status (r/atom nil))
+
+(defn export-wav []
+  (reset! export-status "Exporting...")
+  (-> (js/fetch "/api/export")
+      (.then #(.json %))
+      (.then (fn [result]
+               (reset! export-status (str "Exported: " (.-exported result)))
+               (js/setTimeout #(reset! export-status nil) 3000)))))
+
 (defn transport []
   [:div.transport
    [:button.play-btn
     {:on-click #(set-playing (not (:playing @state)))}
     (if (:playing @state) "⏹" "▶")]
+   (when-not (:playing @state)
+     [:button.export-btn {:on-click export-wav} "Export WAV"])
+   (when @export-status
+     [:span.export-status @export-status])
    [:div.tempo
     [:button.tempo-btn {:on-click #(set-bpm (dec (:bpm @state)))} "◀"]
     [:span.tempo-display (:bpm @state)]

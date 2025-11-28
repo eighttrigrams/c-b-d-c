@@ -6,3 +6,4 @@ samples/*
 .DS_Store
 node_modules
 .shadow-cljs
+.exports
