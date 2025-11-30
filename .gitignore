@@ -7,3 +7,4 @@ samples/*
 node_modules
 .shadow-cljs
 .exports
+resources/public/js/cljs-runtime

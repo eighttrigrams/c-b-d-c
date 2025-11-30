@@ -8,15 +8,21 @@
                         :playing true
                         :step 0}))
 
+(defonce active-tab (r/atom :sequencer))
+
 (defonce playhead (r/atom {:step 0 :last-sync 0 :sync-step 0}))
 
-(def channel-names ["Kick" "Snare" "HiHat" "Reso"])
+(def channel-names ["Kick" "Snare" "HiHat" "Reso" "" "" "" ""])
 
 (def pattern
   [{:sample :kick  :steps [127 0 0 0 127 0 0 0 127 0 0 0 127 0 0 0]}
    {:sample :snare :steps [0 0 0 0 127 0 0 0 0 0 0 0 127 0 0 0]}
    {:sample :hh    :steps [127 0 80 0 127 0 80 0 127 0 80 0 127 0 80 0]}
-   {:sample :reso  :steps [127 0 20 0 127 0 0 0 0 0 0 0 0 0 0 0]}])
+   {:sample :reso  :steps [127 0 20 0 127 0 0 0 0 0 0 0 0 0 0 0]}
+   {:sample nil    :steps [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]}
+   {:sample nil    :steps [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]}
+   {:sample nil    :steps [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]}
+   {:sample nil    :steps [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]}])
 
 (defn fetch-state []
   (-> (js/fetch "/api/state")
@@ -118,7 +124,9 @@
                (js/setTimeout #(reset! export-status nil) 3000)))))
 
 (defn drum-grid []
-  (let [current-step (:step @playhead)]
+  (let [current-step (:step @playhead)
+        visible-bars 4
+        steps-per-bar 16]
     [:div.grid-container
      [:div.grid
       (doall
@@ -127,45 +135,84 @@
          [:div.grid-row
           [:span.row-label (nth channel-names row-idx)]
           (doall
-           (for [[col-idx vel] (map-indexed vector steps)]
+           (for [bar (range visible-bars)
+                 col (range steps-per-bar)
+                 :let [col-idx (+ (* bar steps-per-bar) col)
+                       vel (nth steps col)
+                       ghost? (pos? bar)
+                       bar-end? (= col (dec steps-per-bar))]]
              ^{:key col-idx}
-             [:div.grid-cell {:class (when (pos? vel) "active")
-                              :style {:opacity (if (pos? vel) (/ vel 127) 0.15)}}]))]))]
-     [:div.playhead {:style {:left (str (+ 60 (* current-step 24)) "px")}}]]))
+             [:div.grid-cell {:class [(when (pos? vel) "active")
+                                      (when ghost? "ghost")
+                                      (when bar-end? "bar-end")]
+                              :style {:opacity (if ghost?
+                                                 0.15
+                                                 (if (pos? vel) (/ vel 127) 0.15))}}]))]))]
+     [:div.playhead {:style {:left (str (+ 60 (* current-step 18)) "px")}}]]))
 
 (defn transport []
   [:div.transport
    [:button.play-btn
     {:on-click #(set-playing (not (:playing @state)))}
     (if (:playing @state) "⏹" "▶")]
-   (when-not (:playing @state)
-     [:button.export-btn {:on-click export-wav} "Export WAV"])
-   (when @export-status
-     [:span.export-status @export-status])
    [:div.tempo
     [:button.tempo-btn {:on-click #(set-bpm (dec (:bpm @state)))} "◀"]
     [:span.tempo-display (:bpm @state)]
     [:button.tempo-btn {:on-click #(set-bpm (inc (:bpm @state)))} "▶"]]])
 
+(defn vertical-fader [{:keys [label value on-change]}]
+  [:div.vfader
+   [:input {:type "range"
+            :min 0
+            :max 127
+            :value value
+            :orient "vertical"
+            :on-change #(on-change (.. % -target -value))}]
+   [:span.vfader-value value]
+   [:label label]])
+
 (defn mixer-ui []
   [:div.mixer
-   [slider {:label "Master"
-            :value (:master @state)
-            :on-change set-master}]
-   [:hr]
    (doall
     (for [[idx vol] (map-indexed vector (:mixer @state))]
       ^{:key idx}
-      [slider {:label (nth channel-names idx)
-               :value vol
-               :on-change #(set-channel idx %)}]))])
+      [vertical-fader {:label (nth channel-names idx)
+                       :value vol
+                       :on-change #(set-channel idx %)}]))
+   [:div.vfader.master-fader
+    [:input {:type "range"
+             :min 0
+             :max 127
+             :value (:master @state)
+             :orient "vertical"
+             :on-change #(set-master (.. % -target -value))}]
+    [:span.vfader-value (:master @state)]
+    [:label "Master"]]])
+
+(defn tabs []
+  [:div.tabs
+   [:button.tab {:class (when (= @active-tab :sequencer) "active")
+                 :on-click #(reset! active-tab :sequencer)} "Sequencer"]
+   [:button.tab {:class (when (= @active-tab :mixer) "active")
+                 :on-click #(reset! active-tab :mixer)} "Mixer"]
+   [:button.tab {:class (when (= @active-tab :settings) "active")
+                 :on-click #(reset! active-tab :settings)} "Settings"]])
+
+(defn settings-ui []
+  [:div.settings
+   [:h2 "Export"]
+   [:button.export-btn {:on-click export-wav} "Export WAV"]
+   (when @export-status
+     [:span.export-status @export-status])])
 
 (defn app []
   [:div
-   [:h1 "AI DAW"]
+   [tabs]
    [transport]
-   [drum-grid]
-   [mixer-ui]])
+   (case @active-tab
+     :sequencer [drum-grid]
+     :mixer [mixer-ui]
+     :settings [settings-ui])])
 
 (defn init []
   (fetch-state)

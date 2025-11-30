@@ -2,6 +2,8 @@
 
 ![AI DAW UI](./ai-daw-ui.png)
 
+- CBDC - Chat Based Drum Computer
+
 ## Setup
 
 ```bash
@@ -39,3 +41,8 @@ clj -X:export :filename '"my-beat.wav"'
 ## Tracks
 
 1. https://soundcloud.com/eighttrigrams/ai-daw-hello-world
+
+## Data Model
+
+- No Patterns
+- Instead Sequences, non to be repeated (in contrast to patterns) sequences of up to 16 bars, which connect to songs
