@@ -206,6 +206,49 @@
     [:div.bar-nav-btn {:on-click shift-bars-left} "◀"]
     [:div.bar-nav-btn {:on-click shift-bars-right} "▶"]]])
 
+(defn transport []
+  [:div.transport
+   [:button.play-btn
+    {:on-click #(set-playing (not (:playing @state)))}
+    (if (:playing @state) "⏹" "▶")]
+   [:div.tempo
+    [:button.tempo-btn {:on-click #(set-bpm (dec (:bpm @state)))} "◀"]
+    [:span.tempo-display (:bpm @state)]
+    [:button.tempo-btn {:on-click #(set-bpm (inc (:bpm @state)))} "▶"]]])
+
+(defonce chat-messages (r/atom [{:role :assistant :text "Hey! I'm your AI co-pilot. Tell me how you'd like to change the beat."}]))
+(defonce chat-input (r/atom ""))
+
+(defn chat-panel []
+  [:div.chat-panel
+   [:div.chat-header "AI Co-Pilot " [:span.mockup-badge "(mockup)"]]
+   [:div.chat-messages
+    (doall
+     (for [[idx {:keys [role text]}] (map-indexed vector @chat-messages)]
+       ^{:key idx}
+       [:div.chat-message {:class (name role)}
+        [:span.chat-role (if (= role :assistant) "AI" "You")]
+        [:span.chat-text text]]))]
+   [:div.chat-input-container
+    [:input.chat-input {:type "text"
+                        :placeholder "e.g. Add a snare on beats 2 and 4..."
+                        :value @chat-input
+                        :on-change #(reset! chat-input (.. % -target -value))
+                        :on-key-down #(when (= (.-key %) "Enter")
+                                        (when (seq @chat-input)
+                                          (swap! chat-messages conj {:role :user :text @chat-input})
+                                          (reset! chat-input "")
+                                          (js/setTimeout
+                                           (fn [] (swap! chat-messages conj {:role :assistant :text "I'll help you with that! (This is a mockup - AI integration coming soon)"}))
+                                           500)))}]
+    [:button.chat-send {:on-click #(when (seq @chat-input)
+                                     (swap! chat-messages conj {:role :user :text @chat-input})
+                                     (reset! chat-input "")
+                                     (js/setTimeout
+                                      (fn [] (swap! chat-messages conj {:role :assistant :text "I'll help you with that! (This is a mockup - AI integration coming soon)"}))
+                                      500))}
+     "▶"]]])
+
 (defn drum-grid []
   (let [current-step (:step @playhead)
         visible-bars 4
@@ -218,9 +261,14 @@
         bar-gap 12
         cell-width 18
         playhead-x (+ 78 (* playhead-grid-bar (+ (* steps-per-bar cell-width) bar-gap)) (* playhead-col cell-width))]
-    [:div
-     [play-bar]
-     [bar-selector]
+    [:div.sequencer-layout
+     [:div.sequencer-top-row
+      [:div.sequencer-left
+       [transport]
+       [:div.sequencer-controls
+        [play-bar]
+        [bar-selector]]]
+      [chat-panel]]
      [:div.grid-container
       [:div.grid
        (doall
@@ -252,15 +300,6 @@
       (when playhead-visible?
         [:div.playhead {:style {:left (str playhead-x "px")}}])]]))
 
-(defn transport []
-  [:div.transport
-   [:button.play-btn
-    {:on-click #(set-playing (not (:playing @state)))}
-    (if (:playing @state) "⏹" "▶")]
-   [:div.tempo
-    [:button.tempo-btn {:on-click #(set-bpm (dec (:bpm @state)))} "◀"]
-    [:span.tempo-display (:bpm @state)]
-    [:button.tempo-btn {:on-click #(set-bpm (inc (:bpm @state)))} "▶"]]])
 
 (defn vertical-fader [{:keys [label value on-change]}]
   [:div.vfader
@@ -324,11 +363,10 @@
 (defn app []
   [:div
    [tabs]
-   [transport]
    (case @active-tab
      :sequencer [drum-grid]
-     :mixer [mixer-ui]
-     :settings [settings-ui])])
+     :mixer [:div [transport] [mixer-ui]]
+     :settings [:div [transport] [settings-ui]])])
 
 (defn init []
   (fetch-state)

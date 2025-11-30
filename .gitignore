@@ -9,3 +9,4 @@ node_modules
 .exports
 resources/public/js/cljs-runtime
 resources/public/js/main.js
+.playwright-mcp
