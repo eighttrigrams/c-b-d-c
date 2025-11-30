@@ -140,8 +140,11 @@
       (.then #(.json %))
       (.then (fn [_]
                (reset! current-sequence filename)
-               (fetch-tracks)
-               (reset! selected-bars [0])))))
+               (-> (fetch-tracks)
+                   (.then (fn [_]
+                            (let [len (sequence-length)
+                                  bars-to-select (min 4 len)]
+                              (reset! selected-bars (vec (range bars-to-select)))))))))))
 
 (defn export-wav []
   (reset! export-status "Exporting...")
