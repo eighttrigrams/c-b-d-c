@@ -16,6 +16,14 @@
     (content-type (response (slurp "resources/public/index.html")) "text/html"))
   (GET "/api/state" []
     (response @core/state))
+  (GET "/api/tracks" []
+    (response @core/sequence'))
+  (GET "/api/sequences" []
+    (response (core/list-sequences)))
+  (PUT "/api/sequence" {body :body}
+    (let [filename (:filename body)]
+      (reset! core/sequence' (core/load-sequence filename))
+      (response {:loaded filename})))
   (PUT "/api/master" {body :body}
     (swap! core/state assoc :master (:value body))
     (response @core/state))
@@ -35,10 +43,7 @@
           timestamp (.format (LocalDateTime/now) (DateTimeFormatter/ofPattern "yyyy-MM-dd_HH-mm-ss"))
           filename (str "export-" timestamp ".wav")
           file (File. export-dir filename)
-          samples {:kick  (core/sample->stereo-ints (core/load-sample "samples/BD Kick 006 HC.wav"))
-                   :snare (core/sample->stereo-ints (core/load-sample "samples/SN Sd 4Bit Vinyl St GB.wav"))
-                   :hh    (core/sample->stereo-ints (core/load-sample "samples/HH 60S Stomp2 GB.wav"))
-                   :reso  (core/sample->stereo-ints (core/load-sample "samples/reso.wav"))}
+          samples (core/load-track-samples)
           n-steps (* 8 16)
           audio-bytes (core/render-steps samples n-steps)
           stream (javax.sound.sampled.AudioInputStream.

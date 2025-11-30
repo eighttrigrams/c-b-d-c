@@ -1,11 +1,12 @@
 (ns daw.core
+  (:require [clojure.edn :as edn])
   (:import [javax.sound.sampled AudioSystem AudioFormat SourceDataLine DataLine$Info AudioFormat$Encoding AudioFileFormat$Type]
            [java.io ByteArrayInputStream File]))
 
 (def sample-rate 44100.0)
 
 (defonce state (atom {:master 127
-                       :mixer [127 127 50 110]
+                       :mixer [127 127 50 110 127 127 127 127]
                        :bpm 120
                        :playing true
                        :step 0}))
@@ -13,11 +14,20 @@
 (defn frames-per-16th []
   (int (/ (* sample-rate 60) (:bpm @state) 4)))
 
-(def pattern
-  [{:sample :kick  :steps [127 0 0 0 127 0 0 0 127 0 0 0 127 0 0 0]}
-   {:sample :snare :steps [0 0 0 0 127 0 0 0 0 0 0 0 127 0 0 0]}
-   {:sample :hh    :steps [127 0 80 0 127 0 80 0 127 0 80 0 127 0 80 0]}
-   {:sample :reso  :steps [127 0 20 0 127 0 0 0 0 0 0 0 0 0 0 0]}])
+(defn load-sequence [filename]
+  (edn/read-string (slurp (str "sequences/" filename))))
+
+(defn list-sequences []
+  (->> (file-seq (File. "sequences"))
+       (filter #(.isFile %))
+       (filter #(.endsWith (.getName %) ".edn"))
+       (map #(.getName %))
+       sort))
+
+(defonce sequence' (atom (load-sequence "basic.edn")))
+
+(defn sequence-length-bars []
+  (apply max 0 (map #(count (:bars %)) @sequence')))
 
 (def output-format (AudioFormat. sample-rate 16 2 true false))
 
@@ -81,10 +91,12 @@
         (let [all-bytes (byte-array (mapcat seq output))]
           all-bytes)
         (let [buffer (int-array samples-per-16th)
-              idx (mod step 16)
+              bar-idx (quot step 16)
+              step-idx (mod step 16)
               new-voices (doall
-                          (for [[ch {:keys [sample steps]}] (map-indexed vector pattern)
-                                :let [velocity (nth steps idx)
+                          (for [[ch {:keys [sample bars]}] (map-indexed vector @sequence')
+                                :let [bar-data (get bars bar-idx)
+                                      velocity (if bar-data (nth bar-data step-idx) 0)
                                       channel-vol (nth (:mixer @state) ch)
                                       master-vol (:master @state)]
                                 :when (pos? velocity)]
@@ -100,11 +112,14 @@
                            {:sample sample :velocity velocity :offset new-offset}))]
           (recur (inc step) remaining (conj output (ints->bytes buffer))))))))
 
+(defn load-track-samples []
+  (->> @sequence'
+       (filter :sample)
+       (map (fn [{:keys [sample]}] [sample (sample->stereo-ints (load-sample sample))]))
+       (into {})))
+
 (defn export-wav [{:keys [filename] :or {filename "output.wav"}}]
-  (let [samples {:kick  (sample->stereo-ints (load-sample "samples/BD Kick 006 HC.wav"))
-                 :snare (sample->stereo-ints (load-sample "samples/SN Sd 4Bit Vinyl St GB.wav"))
-                 :hh    (sample->stereo-ints (load-sample "samples/HH 60S Stomp2 GB.wav"))
-                 :reso  (sample->stereo-ints (load-sample "samples/reso.wav"))}
+  (let [samples (load-track-samples)
         n-steps (* 8 16)
         audio-bytes (render-steps samples n-steps)
         stream (javax.sound.sampled.AudioInputStream.
@@ -122,23 +137,24 @@
   (start-server)
   (let [info (DataLine$Info. SourceDataLine output-format)
         line (AudioSystem/getLine info)
-        samples {:kick  (sample->stereo-ints (load-sample "samples/BD Kick 006 HC.wav"))
-                 :snare (sample->stereo-ints (load-sample "samples/SN Sd 4Bit Vinyl St GB.wav"))
-                 :hh    (sample->stereo-ints (load-sample "samples/HH 60S Stomp2 GB.wav"))
-                 :reso  (sample->stereo-ints (load-sample "samples/reso.wav"))}]
+        samples (load-track-samples)]
     (.open ^SourceDataLine line output-format)
     (.start ^SourceDataLine line)
     (println "Playing 4/4 (Ctrl+C to stop)\nMixer UI: http://localhost:3015")
     (loop [step 0
            voices []]
-      (let [samples-per-16th (* (frames-per-16th) 2)]
+      (let [samples-per-16th (* (frames-per-16th) 2)
+            total-steps (* 16 (max 1 (sequence-length-bars)))]
         (if (:playing @state)
           (let [buffer (int-array samples-per-16th)
-                idx (mod step 16)
-                _ (swap! state assoc :step idx)
+                looped-step (mod step total-steps)
+                bar-idx (quot looped-step 16)
+                step-idx (mod looped-step 16)
+                _ (swap! state assoc :step looped-step)
                 new-voices (doall
-                            (for [[ch {:keys [sample steps]}] (map-indexed vector pattern)
-                                  :let [velocity (nth steps idx)
+                            (for [[ch {:keys [sample bars]}] (map-indexed vector @sequence')
+                                  :let [bar-data (get bars bar-idx)
+                                        velocity (if bar-data (nth bar-data step-idx) 0)
                                         channel-vol (nth (:mixer @state) ch)
                                         master-vol (:master @state)]
                                   :when (pos? velocity)]

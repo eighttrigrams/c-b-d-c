@@ -1,0 +1,12 @@
+[{:sample "samples/BD Kick 006 HC.wav"       :bars [[127 0 0 0 127 0 0 0 127 0 0 0 127 0 0 0]
+                                                    [127 0 0 0 127 0 0 0 127 0 0 0 127 0 127 0]]}
+ {:sample "samples/SN Sd 4Bit Vinyl St GB.wav" :bars [[0 0 0 0 127 0 0 0 0 0 0 0 127 0 0 0]
+                                                      [0 0 0 0 127 0 0 0 0 0 0 0 127 0 127 127]]}
+ {:sample "samples/HH 60S Stomp2 GB.wav"     :bars [[127 0 80 0 127 0 80 0 127 0 80 0 127 0 80 0]
+                                                    [127 0 40 0 127 0 40 0 127 0 40 0 40 0 40 0]]}
+ {:sample "samples/reso.wav"                 :bars [[127 0 20 0 127 0 0 0 0 0 0 0 0 0 0 0]
+                                                    [0 0 0 0 0 0 0 0 127 0 20 0 127 0 0 0]]}
+ {:sample nil :bars []}
+ {:sample nil :bars []}
+ {:sample nil :bars []}
+ {:sample nil :bars []}]
