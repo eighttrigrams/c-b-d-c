@@ -1,4 +1,4 @@
-# AI DAW
+# C.D.B.C. - A Chat Based Drum Computer
 
 ![AI DAW UI](./ai-daw-ui.png)
 
