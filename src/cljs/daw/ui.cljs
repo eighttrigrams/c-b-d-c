@@ -221,35 +221,52 @@
 
 (defonce chat-messages (r/atom [{:role :assistant :text "Hey! I'm your AI co-pilot. Tell me how you'd like to change the beat."}]))
 (defonce chat-input (r/atom ""))
+(defonce chat-busy (r/atom false))
+
+(defn send-chat [text]
+  (when (and (seq text) (not @chat-busy))
+    (swap! chat-messages conj {:role :user :text text})
+    (reset! chat-input "")
+    (reset! chat-busy true)
+    (-> (js/fetch "/api/chat"
+                  #js {:method "POST"
+                       :headers #js {"Content-Type" "application/json"}
+                       :body (js/JSON.stringify #js {:text text})})
+        (.then #(.json %))
+        (.then (fn [result]
+                 (let [data (js->clj result :keywordize-keys true)
+                       reply (or (:reply data) (:error data) "(no reply)")]
+                   (swap! chat-messages conj {:role :assistant :text reply})
+                   (fetch-tracks)
+                   (reset! chat-busy false))))
+        (.catch (fn [err]
+                  (swap! chat-messages conj {:role :assistant :text (str "Error: " err)})
+                  (reset! chat-busy false))))))
 
 (defn chat-panel []
   [:div.chat-panel
-   [:div.chat-header "AI Co-Pilot " [:span.mockup-badge "(mockup)"]]
+   [:div.chat-header "AI Co-Pilot"]
    [:div.chat-messages
     (doall
      (for [[idx {:keys [role text]}] (map-indexed vector @chat-messages)]
        ^{:key idx}
        [:div.chat-message {:class (name role)}
         [:span.chat-role (if (= role :assistant) "AI" "You")]
-        [:span.chat-text text]]))]
+        [:span.chat-text text]]))
+    (when @chat-busy
+      [:div.chat-message.assistant
+       [:span.chat-role "AI"]
+       [:span.chat-text "..."]])]
    [:div.chat-input-container
     [:input.chat-input {:type "text"
-                        :placeholder "e.g. Add a snare on beats 2 and 4..."
+                        :placeholder "e.g. Duplicate the first bar to the second bar..."
                         :value @chat-input
+                        :disabled @chat-busy
                         :on-change #(reset! chat-input (.. % -target -value))
                         :on-key-down #(when (= (.-key %) "Enter")
-                                        (when (seq @chat-input)
-                                          (swap! chat-messages conj {:role :user :text @chat-input})
-                                          (reset! chat-input "")
-                                          (js/setTimeout
-                                           (fn [] (swap! chat-messages conj {:role :assistant :text "I'll help you with that! (This is a mockup - AI integration coming soon)"}))
-                                           500)))}]
-    [:button.chat-send {:on-click #(when (seq @chat-input)
-                                     (swap! chat-messages conj {:role :user :text @chat-input})
-                                     (reset! chat-input "")
-                                     (js/setTimeout
-                                      (fn [] (swap! chat-messages conj {:role :assistant :text "I'll help you with that! (This is a mockup - AI integration coming soon)"}))
-                                      500))}
+                                        (send-chat @chat-input))}]
+    [:button.chat-send {:on-click #(send-chat @chat-input)
+                        :disabled @chat-busy}
      "▶"]]])
 
 (defn drum-grid []

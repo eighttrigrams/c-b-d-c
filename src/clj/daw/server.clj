@@ -5,7 +5,8 @@
             [ring.util.response :refer [response content-type]]
             [compojure.core :refer [defroutes GET POST PUT]]
             [compojure.route :as route]
-            [daw.core :as core])
+            [daw.core :as core]
+            [daw.ai :as ai])
   (:import [java.io File]
            [javax.sound.sampled AudioSystem AudioFileFormat$Type]
            [java.time LocalDateTime]
@@ -40,6 +41,12 @@
   (PUT "/api/next-bar" {body :body}
     (swap! core/state assoc :next-bar (:value body))
     (response @core/state))
+  (POST "/api/chat" {body :body}
+    (let [api-key (ai/load-api-key)
+          text (:text body)]
+      (if (nil? api-key)
+        (response {:error "No API key. Set ANTHROPIC_API_KEY or create .anthropic-api-key"})
+        (response {:reply (ai/chat api-key text)}))))
   (GET "/api/export" []
     (let [export-dir (File. ".exports")
           _ (when-not (.exists export-dir) (.mkdirs export-dir))
