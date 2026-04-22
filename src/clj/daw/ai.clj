@@ -9,6 +9,19 @@
 (def ^:private client (HttpClient/newHttpClient))
 (def ^:private model "claude-haiku-4-5-20251001")
 (def ^:private max-tool-iterations 5)
+(def ^:private max-turns 15)
+
+(defonce history (atom []))
+
+(defn- new-user-turn? [{:keys [role content]}]
+  (and (= role "user") (string? content)))
+
+(defn- trim-history [msgs]
+  (let [user-idx (keep-indexed #(when (new-user-turn? %2) %1) msgs)
+        n (count user-idx)]
+    (if (<= n max-turns)
+      (vec msgs)
+      (vec (drop (nth user-idx (- n max-turns)) msgs)))))
 
 (def ^:private system-prompt
   (str "You are the AI co-pilot for a drum-machine/DAW. "
@@ -52,10 +65,11 @@
        :content (str "Error: " (.getMessage e))})))
 
 (defn chat [api-key user-text]
-  (loop [msgs [{:role "user" :content user-text}]
+  (loop [msgs (conj @history {:role "user" :content user-text})
          iter 0]
     (if (>= iter max-tool-iterations)
-      "(tool-use iteration limit reached)"
+      (do (reset! history (trim-history msgs))
+          "(tool-use iteration limit reached)")
       (let [resp (post-messages api-key
                                 {:model model
                                  :max_tokens 1024
@@ -63,11 +77,10 @@
                                  :tools tools/tool-specs
                                  :messages msgs})
             content (:content resp)
-            _ (println "Claude response:" (pr-str resp))]
+            next-msgs (conj msgs {:role "assistant" :content content})]
         (if (= "tool_use" (:stop_reason resp))
           (let [results (mapv run-tool-use (tool-uses content))]
-            (recur (conj msgs
-                         {:role "assistant" :content content}
-                         {:role "user" :content results})
+            (recur (conj next-msgs {:role "user" :content results})
                    (inc iter)))
-          (extract-text content))))))
+          (do (reset! history (trim-history next-msgs))
+              (extract-text content)))))))

@@ -12,6 +12,7 @@
 
 (defonce active-tab (r/atom :sequencer))
 
+
 (defonce tracks (r/atom []))
 
 (defn sequence-length []
@@ -150,7 +151,7 @@
   (reset! export-status "Exporting...")
   (-> (js/fetch "/api/export")
       (.then #(.json %))
-      (.then (fn [result]
+      (.then (fn [^js result]
                (reset! export-status (str "Exported: " (.-exported result)))
                (js/setTimeout #(reset! export-status nil) 3000)))))
 
@@ -219,7 +220,7 @@
     [:span.tempo-display (:bpm @state)]
     [:button.tempo-btn {:on-click #(set-bpm (inc (:bpm @state)))} "▶"]]])
 
-(defonce chat-messages (r/atom [{:role :assistant :text "Hey! I'm your AI co-pilot. Tell me how you'd like to change the beat."}]))
+(defonce chat-messages (r/atom [{:role :assistant :text "Hey! I'm C.B.D.C. Tell me how you'd like to change the beat."}]))
 (defonce chat-input (r/atom ""))
 (defonce chat-busy (r/atom false))
 
@@ -245,7 +246,7 @@
 
 (defn chat-panel []
   [:div.chat-panel
-   [:div.chat-header "AI Co-Pilot"]
+   [:div.chat-header "C.B.D.C."]
    [:div.chat-messages
     (doall
      (for [[idx {:keys [role text]}] (map-indexed vector @chat-messages)]
@@ -261,7 +262,6 @@
     [:input.chat-input {:type "text"
                         :placeholder "e.g. Duplicate the first bar to the second bar..."
                         :value @chat-input
-                        :disabled @chat-busy
                         :on-change #(reset! chat-input (.. % -target -value))
                         :on-key-down #(when (= (.-key %) "Enter")
                                         (send-chat @chat-input))}]
