@@ -75,26 +75,31 @@
     (js/clearInterval @sync-interval)
     (reset! sync-interval nil)))
 
+(declare mark-dirty)
+
 (defn set-master [value]
   (-> (js/fetch "/api/master"
                 #js {:method "PUT"
                      :headers #js {"Content-Type" "application/json"}
                      :body (js/JSON.stringify #js {:value (js/parseInt value)})})
-      (.then #(swap! state assoc :master (js/parseInt value)))))
+      (.then #(do (swap! state assoc :master (js/parseInt value))
+                  (mark-dirty)))))
 
 (defn set-channel [ch value]
   (-> (js/fetch (str "/api/mixer/" ch)
                 #js {:method "PUT"
                      :headers #js {"Content-Type" "application/json"}
                      :body (js/JSON.stringify #js {:value (js/parseInt value)})})
-      (.then #(swap! state assoc-in [:mixer ch] (js/parseInt value)))))
+      (.then #(do (swap! state assoc-in [:mixer ch] (js/parseInt value))
+                  (mark-dirty)))))
 
 (defn set-bpm [value]
   (-> (js/fetch "/api/bpm"
                 #js {:method "PUT"
                      :headers #js {"Content-Type" "application/json"}
                      :body (js/JSON.stringify #js {:value value})})
-      (.then #(swap! state assoc :bpm value))))
+      (.then #(do (swap! state assoc :bpm value)
+                  (mark-dirty)))))
 
 (defn set-playing [value]
   (-> (js/fetch "/api/playing"
@@ -127,6 +132,70 @@
 (defonce export-status (r/atom nil))
 (defonce available-sequences (r/atom []))
 (defonce current-sequence (r/atom "basic.edn"))
+(defonce projects (r/atom []))
+(defonce new-project-name (r/atom ""))
+(defonce dirty? (r/atom false))
+
+(defn mark-dirty [] (reset! dirty? true))
+(defn mark-clean [] (reset! dirty? false))
+
+(defn confirm-discard []
+  (or (not @dirty?)
+      (js/confirm "You have unsaved changes. Discard them?")))
+
+(defn fetch-projects []
+  (-> (js/fetch "/api/projects")
+      (.then #(.json %))
+      (.then #(reset! projects (js->clj % :keywordize-keys true)))))
+
+(defn save-project [name]
+  (when (seq name)
+    (-> (js/fetch "/api/projects"
+                  #js {:method "POST"
+                       :headers #js {"Content-Type" "application/json"}
+                       :body (js/JSON.stringify #js {:name name})})
+        (.then #(.json %))
+        (.then (fn [result]
+                 (reset! projects (js->clj result :keywordize-keys true))
+                 (reset! new-project-name "")
+                 (mark-clean))))))
+
+(defn overwrite-project [name]
+  (when (js/confirm (str "Overwrite project \"" name "\" with current state?"))
+    (save-project name)))
+
+(defn save-new-project [name]
+  (when (seq name)
+    (if (some #(= name (:name %)) @projects)
+      (overwrite-project name)
+      (save-project name))))
+
+(defn load-project [id]
+  (-> (js/fetch (str "/api/projects/" id)
+                #js {:method "PUT"
+                     :headers #js {"Content-Type" "application/json"}})
+      (.then #(.json %))
+      (.then (fn [_]
+               (fetch-state)
+               (-> (fetch-tracks)
+                   (.then (fn [_]
+                            (let [len (sequence-length)
+                                  bars-to-select (min 4 len)]
+                              (reset! selected-bars (vec (range bars-to-select)))
+                              (mark-clean)))))))))
+
+(defn confirm-load-project [id]
+  (when (confirm-discard) (load-project id)))
+
+(defn delete-project [id]
+  (-> (js/fetch (str "/api/projects/" id)
+                #js {:method "DELETE"})
+      (.then #(.json %))
+      (.then #(reset! projects (js->clj % :keywordize-keys true)))))
+
+(defn confirm-delete-project [id name]
+  (when (js/confirm (str "Delete project \"" name "\"? This cannot be undone."))
+    (delete-project id)))
 
 (defn fetch-sequences []
   (-> (js/fetch "/api/sequences")
@@ -145,7 +214,11 @@
                    (.then (fn [_]
                             (let [len (sequence-length)
                                   bars-to-select (min 4 len)]
-                              (reset! selected-bars (vec (range bars-to-select)))))))))))
+                              (reset! selected-bars (vec (range bars-to-select)))
+                              (mark-clean)))))))))
+
+(defn confirm-load-sequence [filename]
+  (when (confirm-discard) (load-sequence filename)))
 
 (defn export-wav []
   (reset! export-status "Exporting...")
@@ -239,6 +312,7 @@
                        reply (or (:reply data) (:error data) "(no reply)")]
                    (swap! chat-messages conj {:role :assistant :text reply})
                    (fetch-tracks)
+                   (mark-dirty)
                    (reset! chat-busy false))))
         (.catch (fn [err]
                   (swap! chat-messages conj {:role :assistant :text (str "Error: " err)})
@@ -379,15 +453,36 @@
 
 (defn settings-ui []
   [:div.settings
+   [:h2 "Projects"]
+   [:div.project-save
+    [:input {:type "text"
+             :placeholder "Project name"
+             :value @new-project-name
+             :on-change #(reset! new-project-name (.. % -target -value))
+             :on-key-down #(when (= (.-key %) "Enter")
+                             (save-new-project @new-project-name))}]
+    [:button {:on-click #(save-new-project @new-project-name)} "Save"]]
+   [:div.project-list
+    (doall
+     (for [{:keys [id name]} @projects]
+       ^{:key id}
+       [:div.project-row
+        [:button.sequence-btn {:on-click #(confirm-load-project id)} name]
+        [:button.project-save-btn {:on-click #(overwrite-project name)} "Save"]
+        [:button.project-delete {:on-click #(confirm-delete-project id name)} "×"]]))]
    [:h2 "Sequence"]
    [:div.sequence-list
     (doall
      (for [seq-name @available-sequences]
        ^{:key seq-name}
        [:button.sequence-btn {:class (when (= seq-name @current-sequence) "active")
-                              :on-click #(load-sequence seq-name)}
+                              :on-click #(confirm-load-sequence seq-name)}
         (str/replace seq-name #"\.edn$" "")]))]
-   [:h2 "Export"]
+   ])
+
+(defn settings-top []
+  [:div.settings-top
+   [transport]
    [:button.export-btn {:on-click export-wav} "Export WAV"]
    (when @export-status
      [:span.export-status @export-status])])
@@ -398,7 +493,7 @@
    (case @active-tab
      :sequencer [drum-grid]
      :mixer [:div [transport] [mixer-ui]]
-     :settings [:div [transport] [settings-ui]])])
+     :settings [:div [settings-top] [settings-ui]])])
 
 (defn push-selected-bars [bars]
   (js/fetch "/api/selected-bars"
@@ -410,6 +505,7 @@
   (fetch-state)
   (fetch-tracks)
   (fetch-sequences)
+  (fetch-projects)
   (start-sync)
   (start-playhead-loop)
   (push-selected-bars @selected-bars)

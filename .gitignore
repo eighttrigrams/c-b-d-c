@@ -12,3 +12,4 @@ resources/public/js/main.js
 resources/public/js/manifest.edn
 .playwright-mcp
 .anthropic-api-key
+data

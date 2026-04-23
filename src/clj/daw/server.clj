@@ -3,10 +3,12 @@
             [ring.middleware.json :refer [wrap-json-body wrap-json-response]]
             [ring.middleware.resource :refer [wrap-resource]]
             [ring.util.response :refer [response content-type]]
-            [compojure.core :refer [defroutes GET POST PUT]]
+            [compojure.core :refer [defroutes GET POST PUT DELETE]]
             [compojure.route :as route]
+            [clojure.string :as str]
             [daw.core :as core]
-            [daw.ai :as ai])
+            [daw.ai :as ai]
+            [daw.db :as db])
   (:import [java.io File]
            [javax.sound.sampled AudioSystem AudioFileFormat$Type]
            [java.time LocalDateTime]
@@ -53,6 +55,30 @@
   (POST "/api/chat/reset" []
     (reset! ai/history [])
     (response {:reset true}))
+  (GET "/api/projects" []
+    (response (db/list-projects)))
+  (POST "/api/projects" {body :body}
+    (let [name (:name body)]
+      (if (str/blank? name)
+        {:status 400 :body {:error "name required"}}
+        (do (db/save-project {:name name
+                              :sequence @core/sequence'
+                              :mixer (:mixer @core/state)
+                              :master (:master @core/state)
+                              :bpm (:bpm @core/state)})
+            (response (db/list-projects))))))
+  (PUT "/api/projects/:id" [id]
+    (if-let [p (db/get-project (Integer/parseInt id))]
+      (do (reset! core/sequence' (:sequence p))
+          (swap! core/state assoc
+                 :mixer (:mixer p)
+                 :master (:master p)
+                 :bpm (:bpm p))
+          (response {:loaded (:name p)}))
+      {:status 404 :body {:error "not found"}}))
+  (DELETE "/api/projects/:id" [id]
+    (db/delete-project (Integer/parseInt id))
+    (response (db/list-projects)))
   (GET "/api/export" []
     (let [export-dir (File. ".exports")
           _ (when-not (.exists export-dir) (.mkdirs export-dir))
@@ -77,6 +103,7 @@
       (wrap-resource "public")))
 
 (defn start []
+  (db/init-db)
   (println "Starting server on http://localhost:3015")
   (run-jetty app {:port 3015 :join? false}))
 
