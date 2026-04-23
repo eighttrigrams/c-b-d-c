@@ -1,8 +1,6 @@
 # C.D.B.C. - A Chat Based Drum Computer
 
-![AI DAW UI](./ai-daw-ui.png)
-
-- CBDC - Chat Based Drum Computer
+<img width="1419" height="731" alt="Screenshot 2026-04-23 at 17 22 59" src="https://github.com/user-attachments/assets/f7ed9109-1ccc-4495-ac08-92c5d172a004" />
 
 ## Setup
 
