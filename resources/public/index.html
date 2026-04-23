@@ -324,6 +324,37 @@
     .master-fader input[type="range"] { height: 180px; }
     .master-fader label { color: #e94560; font-weight: bold; }
 
+    .mini-mixer {
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+      margin: 8px 0;
+    }
+    .mini-vfader {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .mini-vfader input[type="range"] {
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 16px;
+      height: 90px;
+      appearance: slider-vertical;
+    }
+    .mini-vfader label {
+      font-size: 9px;
+      color: #888;
+      font-family: monospace;
+    }
+    .mini-master {
+      margin-left: 6px;
+      padding-left: 6px;
+      border-left: 1px solid #333;
+    }
+    .mini-master label { color: #e94560; font-weight: bold; }
+
     hr { width: 100%; border-color: #333; }
 
     .sequencer-layout {

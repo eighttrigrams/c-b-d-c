@@ -355,6 +355,22 @@
                         :disabled @chat-busy}
      "▶"]]])
 
+(defn mini-mixer []
+  [:div.mini-mixer
+   (doall
+    (for [[idx vol] (map-indexed vector (:mixer @state))]
+      ^{:key idx}
+      [:div.mini-vfader
+       [:input {:type "range" :min 0 :max 127
+                :value vol :orient "vertical"
+                :on-change #(set-channel idx (.. % -target -value))}]
+       [:label (str (inc idx))]]))
+   [:div.mini-vfader.mini-master
+    [:input {:type "range" :min 0 :max 127
+             :value (:master @state) :orient "vertical"
+             :on-change #(set-master (.. % -target -value))}]
+    [:label "M"]]])
+
 (defn drum-grid []
   (let [current-step (:step @playhead)
         visible-bars 4
@@ -371,6 +387,7 @@
      [:div.sequencer-top-row
       [:div.sequencer-left
        [transport]
+       [mini-mixer]
        [:div.sequencer-controls
         [play-bar]
         [bar-selector]]]
