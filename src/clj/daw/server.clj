@@ -41,12 +41,18 @@
   (PUT "/api/next-bar" {body :body}
     (swap! core/state assoc :next-bar (:value body))
     (response @core/state))
+  (PUT "/api/selected-bars" {body :body}
+    (reset! core/selected-bars (vec (:value body)))
+    (response {:selected-bars @core/selected-bars}))
   (POST "/api/chat" {body :body}
     (let [api-key (ai/load-api-key)
           text (:text body)]
       (if (nil? api-key)
         (response {:error "No API key. Set ANTHROPIC_API_KEY or create .anthropic-api-key"})
         (response {:reply (ai/chat api-key text)}))))
+  (POST "/api/chat/reset" []
+    (reset! ai/history [])
+    (response {:reset true}))
   (GET "/api/export" []
     (let [export-dir (File. ".exports")
           _ (when-not (.exists export-dir) (.mkdirs export-dir))

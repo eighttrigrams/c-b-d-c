@@ -6,7 +6,7 @@
 (defonce state (r/atom {:master 127
                         :mixer [127 127 50 110 127 127 127 127]
                         :bpm 120
-                        :playing true
+                        :playing false
                         :step 0
                         :next-bar nil}))
 
@@ -244,20 +244,32 @@
                   (swap! chat-messages conj {:role :assistant :text (str "Error: " err)})
                   (reset! chat-busy false))))))
 
+(defonce chat-messages-el (atom nil))
+
+(defn chat-messages-view []
+  (let [scroll-to-bottom (fn []
+                           (when-let [el @chat-messages-el]
+                             (set! (.-scrollTop el) (.-scrollHeight el))))]
+    (r/create-class
+     {:component-did-update scroll-to-bottom
+      :reagent-render
+      (fn []
+        [:div.chat-messages {:ref #(reset! chat-messages-el %)}
+         (doall
+          (for [[idx {:keys [role text]}] (map-indexed vector @chat-messages)]
+            ^{:key idx}
+            [:div.chat-message {:class (name role)}
+             [:span.chat-role (if (= role :assistant) "AI" "You")]
+             [:span.chat-text text]]))
+         (when @chat-busy
+           [:div.chat-message.assistant
+            [:span.chat-role "AI"]
+            [:span.chat-text "..."]])])})))
+
 (defn chat-panel []
   [:div.chat-panel
    [:div.chat-header "C.B.D.C."]
-   [:div.chat-messages
-    (doall
-     (for [[idx {:keys [role text]}] (map-indexed vector @chat-messages)]
-       ^{:key idx}
-       [:div.chat-message {:class (name role)}
-        [:span.chat-role (if (= role :assistant) "AI" "You")]
-        [:span.chat-text text]]))
-    (when @chat-busy
-      [:div.chat-message.assistant
-       [:span.chat-role "AI"]
-       [:span.chat-text "..."]])]
+   [chat-messages-view]
    [:div.chat-input-container
     [:input.chat-input {:type "text"
                         :placeholder "e.g. Duplicate the first bar to the second bar..."
@@ -388,10 +400,19 @@
      :mixer [:div [transport] [mixer-ui]]
      :settings [:div [transport] [settings-ui]])])
 
+(defn push-selected-bars [bars]
+  (js/fetch "/api/selected-bars"
+            #js {:method "PUT"
+                 :headers #js {"Content-Type" "application/json"}
+                 :body (js/JSON.stringify #js {:value (clj->js bars)})}))
+
 (defn init []
   (fetch-state)
   (fetch-tracks)
   (fetch-sequences)
   (start-sync)
   (start-playhead-loop)
+  (push-selected-bars @selected-bars)
+  (add-watch selected-bars ::sync
+             (fn [_ _ _ new-v] (push-selected-bars new-v)))
   (rdom/render [app] (.getElementById js/document "app")))

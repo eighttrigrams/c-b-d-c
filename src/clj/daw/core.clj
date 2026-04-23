@@ -8,7 +8,7 @@
 (defonce state (atom {:master 127
                        :mixer [127 127 50 110 127 127 127 127]
                        :bpm 120
-                       :playing true
+                       :playing false
                        :step 0
                        :next-bar nil}))
 
@@ -26,6 +26,8 @@
        sort))
 
 (defonce sequence' (atom (load-sequence "basic.edn")))
+
+(defonce selected-bars (atom [0]))
 
 (defn sequence-length-bars []
   (apply max 0 (map #(count (:bars %)) @sequence')))

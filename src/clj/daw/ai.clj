@@ -7,7 +7,7 @@
            [java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers]))
 
 (def ^:private client (HttpClient/newHttpClient))
-(def ^:private model "claude-haiku-4-5-20251001")
+(def ^:private model "claude-sonnet-4-6")
 (def ^:private max-tool-iterations 5)
 (def ^:private max-turns 15)
 
@@ -24,11 +24,17 @@
       (vec (drop (nth user-idx (- n max-turns)) msgs)))))
 
 (def ^:private system-prompt
-  (str "You are the AI co-pilot for a drum-machine/DAW. "
-       "The user describes changes to the beat in plain language; you use tools to edit the sequence. "
-       "Bars are 0-indexed. 'First bar' = 0, 'second bar' = 1, etc. "
-       "Call get_sequence if you need to inspect current state. "
-       "Reply briefly after applying changes."))
+  (str "You are C.B.D.C., the AI co-pilot for a drum-machine/DAW. "
+       "The user describes changes to the beat in plain language; you apply them by editing the sequence. "
+       "\n\nWorkflow: "
+       "1) Call read_sequence to fetch the current state. "
+       "2) Compute the desired new sequence. "
+       "3) Call write_sequence with the full updated array. "
+       "\n\nTerminology: "
+       "A bar has 16 steps (1-16) and 4 beats (1-4). Beat N = step (N-1)*4 + 1. "
+       "Bars are 1-indexed when the user says 'first bar', 'second bar', etc. "
+       "\n\nPreserve the sample field of tracks you aren't changing. "
+       "After writing, reply briefly (one sentence) describing what you did."))
 
 (defn load-api-key []
   (or (when-let [v (System/getenv "ANTHROPIC_API_KEY")]
@@ -72,15 +78,23 @@
           "(tool-use iteration limit reached)")
       (let [resp (post-messages api-key
                                 {:model model
-                                 :max_tokens 1024
+                                 :max_tokens 4096
                                  :system system-prompt
                                  :tools tools/tool-specs
                                  :messages msgs})
-            content (:content resp)
-            next-msgs (conj msgs {:role "assistant" :content content})]
-        (if (= "tool_use" (:stop_reason resp))
+            content (:content resp)]
+        (cond
+          (or (nil? content) (not (sequential? content)))
+          (do (println "Claude API error, history preserved:" (pr-str resp))
+              (str "API error: " (or (get-in resp [:error :message]) (pr-str resp))))
+
+          (= "tool_use" (:stop_reason resp))
           (let [results (mapv run-tool-use (tool-uses content))]
-            (recur (conj next-msgs {:role "user" :content results})
+            (recur (conj msgs
+                         {:role "assistant" :content content}
+                         {:role "user" :content results})
                    (inc iter)))
-          (do (reset! history (trim-history next-msgs))
+
+          :else
+          (do (reset! history (trim-history (conj msgs {:role "assistant" :content content})))
               (extract-text content)))))))
