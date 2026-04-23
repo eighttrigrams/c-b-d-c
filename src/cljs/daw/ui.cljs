@@ -134,6 +134,7 @@
 (defonce current-sequence (r/atom "basic.edn"))
 (defonce projects (r/atom []))
 (defonce new-project-name (r/atom ""))
+(defonce current-project (r/atom nil))
 (defonce dirty? (r/atom false))
 
 (defn mark-dirty [] (reset! dirty? true))
@@ -157,6 +158,7 @@
         (.then #(.json %))
         (.then (fn [result]
                  (reset! projects (js->clj result :keywordize-keys true))
+                 (reset! current-project name)
                  (reset! new-project-name "")
                  (mark-clean))))))
 
@@ -175,7 +177,9 @@
                 #js {:method "PUT"
                      :headers #js {"Content-Type" "application/json"}})
       (.then #(.json %))
-      (.then (fn [_]
+      (.then (fn [result]
+               (let [data (js->clj result :keywordize-keys true)]
+                 (reset! current-project (:loaded data)))
                (fetch-state)
                (-> (fetch-tracks)
                    (.then (fn [_]
@@ -210,6 +214,7 @@
       (.then #(.json %))
       (.then (fn [_]
                (reset! current-sequence filename)
+               (reset! current-project nil)
                (-> (fetch-tracks)
                    (.then (fn [_]
                             (let [len (sequence-length)
@@ -466,7 +471,10 @@
    [:button.tab {:class (when (= @active-tab :mixer) "active")
                  :on-click #(reset! active-tab :mixer)} "Mixer"]
    [:button.tab {:class (when (= @active-tab :settings) "active")
-                 :on-click #(reset! active-tab :settings)} "Settings"]])
+                 :on-click #(reset! active-tab :settings)} "Settings"]
+   [:span.project-name
+    (when @current-project
+      (str @current-project (when @dirty? " *")))]])
 
 (defn settings-ui []
   [:div.settings
